@@ -2,14 +2,21 @@
   "name": "downloader-pro-free",
   "version": "1.0.0",
   "description": "Downloader Pro Free (DPF) - High-speed multi-connection dynamic segmentation download manager",
-  "private": true,
+  "main": "packages/app/src/main/index.js",
+  "author": "dsnbw",
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "test": "node --test packages/*/tests/*.test.js packages/*/dist/tests/*.test.js",
-    "build": "npm run build --workspaces",
-    "start": "npm run start -w packages/app"
+    "test": "node --test packages/*/tests/*.test.js",
+    "build": "node scripts/build-all.js",
+    "dist": "electron-builder",
+    "start": "electron packages/app/src/main/index.js"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
   },
   "keywords": [
     "download-manager",
@@ -17,7 +24,5 @@
     "dynamic-segmentation",
     "video-grabber",
     "cross-platform"
-  ],
-  "author": "dsnbw",
-  "license": "MIT"
+  ]
 }

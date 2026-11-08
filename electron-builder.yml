@@ -33,12 +33,12 @@ mac:
   target:
     - target: dmg
       arch:
-        - universal
-        - arm64
         - x64
+        - arm64
     - target: zip
       arch:
-        - universal
+        - x64
+        - arm64
   category: public.app-category.utilities
 
 linux:
