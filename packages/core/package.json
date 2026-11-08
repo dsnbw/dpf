@@ -1,0 +1,16 @@
+{
+  "name": "@dpf/core",
+  "version": "1.0.0",
+  "description": "Downloader Pro Free - High-speed Dynamic Segmentation Download Engine",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "download-engine",
+    "dynamic-segmentation"
+  ],
+  "author": "dsnbw",
+  "license": "MIT"
+}
