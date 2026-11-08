@@ -1,0 +1,14 @@
+{
+  "name": "@dpf/manager",
+  "version": "1.0.0",
+  "description": "Downloader Pro Free - Task Store, Queue Scheduler, and Bandwidth Limiter",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@dpf/core": "*"
+  },
+  "author": "dsnbw",
+  "license": "MIT"
+}
