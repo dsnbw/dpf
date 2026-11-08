@@ -43,7 +43,7 @@ taskStore.load();
 const scheduler = new QueueScheduler({ maxActiveTasks: 3 });
 const bandwidthLimiter = new BandwidthLimiter(0);
 const ipcServer = new LocalIpcServer();
-const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.4');
+const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.5');
 
 function getAppIcon() {
   const possiblePaths = [
@@ -68,6 +68,7 @@ function createWindow() {
     minHeight: 520,
     frame: false, // Completely removes OS native title bar and borders
     autoHideMenuBar: true, // Prevents Alt key from showing default OS menu
+    show: false, // Prevents white flash before rendering
     backgroundColor: '#0f172a',
     icon: getAppIcon(),
     title: 'Downloader Pro Free (DPF)',
@@ -79,6 +80,10 @@ function createWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
@@ -127,6 +132,12 @@ app.whenReady().then(() => {
   });
   updater.on('update-not-available', (info) => {
     if (mainWindow) mainWindow.webContents.send('update-not-available', info);
+  });
+  updater.on('download-progress', (progress) => {
+    if (mainWindow) mainWindow.webContents.send('update-download-progress', progress);
+  });
+  updater.on('update-downloaded', (data) => {
+    if (mainWindow) mainWindow.webContents.send('update-downloaded', data);
   });
   updater.on('error', (err) => {
     if (mainWindow) mainWindow.webContents.send('update-error', { error: err.message });
@@ -271,9 +282,19 @@ ipcMain.handle('launch-browser-test', async (event, browserName) => {
   return { success: true, browser: target.name, extDir: homeExtDir };
 });
 
-// Auto-Updater Handler
+// Auto-Updater Handlers
 ipcMain.handle('check-for-updates', async () => {
   return await updater.checkForUpdates();
+});
+
+ipcMain.handle('download-update', async () => {
+  return await updater.downloadUpdate((progress) => {
+    if (mainWindow) mainWindow.webContents.send('update-download-progress', progress);
+  });
+});
+
+ipcMain.handle('install-update-silent', async () => {
+  return updater.quitAndInstallSilent();
 });
 
 ipcMain.handle('open-file-location', (event, filePath) => {

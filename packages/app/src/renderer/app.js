@@ -173,36 +173,90 @@ async function init() {
   // Check update directly without hanging
   btnUpdate.addEventListener('click', async () => {
     modalUpdate.style.display = 'flex';
-    updateModalBody.innerHTML = '<div style="color: #94a3b8; font-size: 13px;">Connecting to GitHub Releases API (github.com/dsnbw/dpf)...</div>';
+    updateModalBody.innerHTML = '<div style="color: #94a3b8; font-size: 13px;">Đang kết nối GitHub Releases API (github.com/dsnbw/dpf)...</div>';
 
     try {
       const res = await ipcRenderer.invoke('check-for-updates');
       if (res && res.hasUpdate) {
         updateModalBody.innerHTML = `
-          <div style="color: #10b981; font-weight: bold; margin-bottom: 8px; font-size: 14px;">🚀 New Version Available: v${res.latestVersion}</div>
-          <div style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">Current version: v${res.currentVersion}</div>
-          <div style="background: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto;">
+          <div style="color: #10b981; font-weight: bold; margin-bottom: 6px; font-size: 14px;">🚀 Bản cập nhật mới khả dụng: v${res.latestVersion}</div>
+          <div style="color: #94a3b8; font-size: 12px; margin-bottom: 10px;">Phiên bản hiện tại: v${res.currentVersion}</div>
+          <div style="background: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 100px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #334155;">
             ${res.releaseNotes}
           </div>
-          <div style="margin-top: 14px; text-align: right;">
-            <a href="${res.downloadUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-              Download v${res.latestVersion} Installer
-            </a>
+          
+          <div id="updateProgressArea" style="display: none; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 5px;">
+              <span id="updateProgressLabel">Đang tải bản cập nhật ngầm...</span>
+              <span id="updateProgressSpeed">0 KB/s</span>
+            </div>
+            <div class="progress-bar-bg" style="height: 14px; background: #0f172a; border-radius: 6px; overflow: hidden; border: 1px solid #334155;">
+              <div id="updateProgressFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #06b6d4); transition: width 0.3s ease;"></div>
+            </div>
+            <div id="updateProgressDetail" style="font-size: 10px; color: #64748b; margin-top: 4px; text-align: right;">0 MB / 0 MB (0%)</div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 8px;" id="updateActionArea">
+            <button class="btn btn-primary" id="btnStartAutoUpdate" style="font-weight: bold; padding: 8px 16px;">
+              ⚡ Tải ngầm & Cài đặt tự động
+            </button>
           </div>
         `;
+
+        const btnStartAutoUpdate = document.getElementById('btnStartAutoUpdate');
+        const updateProgressArea = document.getElementById('updateProgressArea');
+        const updateProgressFill = document.getElementById('updateProgressFill');
+        const updateProgressSpeed = document.getElementById('updateProgressSpeed');
+        const updateProgressDetail = document.getElementById('updateProgressDetail');
+        const updateProgressLabel = document.getElementById('updateProgressLabel');
+        const updateActionArea = document.getElementById('updateActionArea');
+
+        btnStartAutoUpdate.addEventListener('click', async () => {
+          btnStartAutoUpdate.disabled = true;
+          btnStartAutoUpdate.innerText = 'Đang tải ngầm...';
+          updateProgressArea.style.display = 'block';
+
+          ipcRenderer.on('update-download-progress', (event, prog) => {
+            updateProgressFill.style.width = `${prog.percent.toFixed(1)}%`;
+            updateProgressSpeed.innerText = formatSpeed(prog.speed);
+            const curMb = (prog.transferred / (1024 * 1024)).toFixed(1);
+            const totMb = (prog.total / (1024 * 1024)).toFixed(1);
+            updateProgressDetail.innerText = `${curMb} MB / ${totMb} MB (${prog.percent.toFixed(1)}%)`;
+          });
+
+          try {
+            await ipcRenderer.invoke('download-update');
+            updateProgressLabel.innerText = '✅ Đã tải xong! Đang tự động cài đặt ngầm...';
+            updateProgressFill.style.width = '100%';
+            updateActionArea.innerHTML = `
+              <div style="color: #10b981; font-weight: bold; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                <span>🔄</span> Đang cài đặt ngầm (Silent Installer) và khởi động lại...
+              </div>
+            `;
+
+            setTimeout(async () => {
+              await ipcRenderer.invoke('install-update-silent');
+            }, 1200);
+          } catch (err) {
+            updateProgressLabel.innerText = '⚠️ Lỗi tải bản cập nhật: ' + err.message;
+            btnStartAutoUpdate.disabled = false;
+            btnStartAutoUpdate.innerText = 'Thử lại';
+          }
+        });
+
       } else if (res && res.error) {
         updateModalBody.innerHTML = `
-          <div style="color: #f87171; font-weight: bold; margin-bottom: 8px;">⚠️ Update Check Note</div>
+          <div style="color: #f87171; font-weight: bold; margin-bottom: 8px;">⚠️ Thông báo cập nhật</div>
           <div style="color: #94a3b8; font-size: 12px;">${res.error}</div>
         `;
       } else {
         updateModalBody.innerHTML = `
-          <div style="color: #38bdf8; font-weight: bold; margin-bottom: 8px; font-size: 14px;">✅ Downloader Pro Free is Up to Date</div>
-          <div style="color: #94a3b8; font-size: 12px;">You are currently running the latest release: v${res ? res.currentVersion : '1.0.1'}</div>
+          <div style="color: #38bdf8; font-weight: bold; margin-bottom: 8px; font-size: 14px;">✅ Downloader Pro Free đang ở phiên bản mới nhất</div>
+          <div style="color: #94a3b8; font-size: 12px;">Bạn đang sử dụng phiên bản mới nhất: v${res ? res.currentVersion : '1.0.4'}</div>
         `;
       }
     } catch (err) {
-      updateModalBody.innerHTML = `<div style="color: #f87171;">Connection error: ${err.message}</div>`;
+      updateModalBody.innerHTML = `<div style="color: #f87171;">Lỗi kết nối: ${err.message}</div>`;
     }
   });
 
