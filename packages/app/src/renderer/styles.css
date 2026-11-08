@@ -20,6 +20,85 @@ body {
   height: 100vh;
 }
 
+/* Custom Frameless Title Bar */
+.custom-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 32px;
+  background-color: #0b1120;
+  border-bottom: 1px solid #1e293b;
+  -webkit-app-region: drag;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.titlebar-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.3px;
+}
+
+.titlebar-version {
+  font-size: 10px;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.titlebar-center {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.titlebar-right {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.win-control-btn {
+  width: 44px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.win-control-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.win-control-btn:hover {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+.win-control-btn.btn-win-close:hover {
+  background-color: #e11d48;
+  color: #ffffff;
+}
+
 /* Toolbar */
 .toolbar {
   display: flex;
@@ -28,6 +107,7 @@ body {
   background-color: #1e293b;
   padding: 6px 12px;
   border-bottom: 1px solid #334155;
+  -webkit-app-region: no-drag;
 }
 
 .tool-btn {

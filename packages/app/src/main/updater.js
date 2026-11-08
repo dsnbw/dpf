@@ -1,14 +1,11 @@
 const https = require('node:https');
 const os = require('node:os');
-const fs = require('node:fs');
-const path = require('node:path');
 const { EventEmitter } = require('node:events');
-const { shell } = require('electron');
 
 class GitHubAutoUpdater extends EventEmitter {
-  constructor(currentVersion, repo = 'dsnbw/dpf') {
+  constructor(currentVersion = '1.0.1', repo = 'dsnbw/dpf') {
     super();
-    this.currentVersion = currentVersion.replace(/^v/, '');
+    this.currentVersion = (currentVersion || '1.0.1').replace(/^v/, '');
     this.repo = repo;
     this.isChecking = false;
   }
@@ -17,7 +14,9 @@ class GitHubAutoUpdater extends EventEmitter {
    * Checks GitHub Releases for a newer version
    */
   async checkForUpdates() {
-    if (this.isChecking) return;
+    if (this.isChecking) {
+      return { isChecking: true };
+    }
     this.isChecking = true;
     this.emit('checking-for-update');
 
@@ -29,22 +28,29 @@ class GitHubAutoUpdater extends EventEmitter {
         const platform = os.platform();
         const asset = this._findPlatformAsset(release.assets || [], platform);
 
-        this.emit('update-available', {
+        const info = {
+          hasUpdate: true,
           currentVersion: this.currentVersion,
           latestVersion: latestTag,
           releaseNotes: release.body || 'New performance improvements and bug fixes.',
           releaseUrl: release.html_url,
           downloadUrl: asset ? asset.browser_download_url : release.html_url,
           assetName: asset ? asset.name : null
-        });
+        };
+        this.emit('update-available', info);
+        return info;
       } else {
-        this.emit('update-not-available', {
+        const info = {
+          hasUpdate: false,
           currentVersion: this.currentVersion,
-          latestVersion: latestTag
-        });
+          latestVersion: latestTag || this.currentVersion
+        };
+        this.emit('update-not-available', info);
+        return info;
       }
     } catch (err) {
       this.emit('error', err);
+      return { hasUpdate: false, error: err.message, currentVersion: this.currentVersion };
     } finally {
       this.isChecking = false;
     }
@@ -82,13 +88,14 @@ class GitHubAutoUpdater extends EventEmitter {
       });
 
       req.on('error', reject);
-      req.setTimeout(10000, () => {
-        req.destroy(new Error('Update check request timed out'));
+      req.setTimeout(12000, () => {
+        req.destroy(new Error('Update check request timed out after 12s'));
       });
     });
   }
 
   _isNewerVersion(latest, current) {
+    if (!latest) return false;
     const lParts = latest.split('.').map(n => parseInt(n, 10) || 0);
     const cParts = current.split('.').map(n => parseInt(n, 10) || 0);
 

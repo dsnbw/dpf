@@ -1,6 +1,6 @@
 {
   "name": "@dpf/extension",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Downloader Pro Free - Universal WebExtension with Floating Media Grabber",
   "scripts": {
     "build": "node build.js"

@@ -1,7 +1,7 @@
 const NATIVE_HOST = 'com.dpf.downloader';
 
 let isEnabled = true;
-let bypassKeyActive = false;
+const detectedMediaByTab = new Map();
 
 // Load settings
 chrome.storage.local.get(['dpfEnabled'], (result) => {
@@ -43,11 +43,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Intercept browser downloads
+// 1. Intercept file downloads from browser
 chrome.downloads.onCreated.addListener((item) => {
-  if (!isEnabled || bypassKeyActive) return;
+  if (!isEnabled) return;
 
-  // Cancel standard browser download
   chrome.downloads.cancel(item.id, () => {
     chrome.downloads.erase({ id: item.id }, () => {});
   });
@@ -62,13 +61,82 @@ chrome.downloads.onCreated.addListener((item) => {
   });
 });
 
+// 2. Network Sniffer for Video / Audio Streams (HLS, DASH, MP4, WebM, MP3, YouTube streams)
+const MEDIA_PATTERNS = [
+  /\.(mp4|m4v|mkv|webm|flv|avi|mov|mp3|m4a|aac|wav|ogg)($|\?)/i,
+  /\.(m3u8|mpd)($|\?)/i,
+  /videoplayback/i,
+  /mime=video/i,
+  /mime=audio/i,
+  /googlevideo\.com\/videoplayback/i
+];
+
+chrome.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    if (!isEnabled || details.tabId < 0) return;
+
+    let contentType = '';
+    let contentLength = 0;
+
+    if (details.responseHeaders) {
+      for (const h of details.responseHeaders) {
+        const name = h.name.toLowerCase();
+        if (name === 'content-type') contentType = (h.value || '').toLowerCase();
+        if (name === 'content-length') contentLength = parseInt(h.value || '0', 10);
+      }
+    }
+
+    const isMediaMime = contentType.startsWith('video/') ||
+                         contentType.startsWith('audio/') ||
+                         contentType.includes('mpegurl') ||
+                         contentType.includes('dash+xml');
+
+    const matchesPattern = MEDIA_PATTERNS.some(p => p.test(details.url));
+
+    if (isMediaMime || matchesPattern) {
+      // Don't capture small thumbnails/icons
+      if (contentLength > 0 && contentLength < 65536 && !contentType.includes('mpegurl')) {
+        return;
+      }
+
+      const mediaItem = {
+        url: details.url,
+        mime: contentType,
+        size: contentLength,
+        timestamp: Date.now()
+      };
+
+      if (!detectedMediaByTab.has(details.tabId)) {
+        detectedMediaByTab.set(details.tabId, []);
+      }
+
+      const tabList = detectedMediaByTab.get(details.tabId);
+      // Avoid duplicates
+      if (!tabList.some(m => m.url === details.url)) {
+        tabList.push(mediaItem);
+        // Notify tab content script to update grabber UI
+        chrome.tabs.sendMessage(details.tabId, {
+          action: 'MEDIA_DETECTED',
+          media: mediaItem,
+          totalStreams: tabList.length
+        }).catch(() => {});
+      }
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['responseHeaders']
+);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  detectedMediaByTab.delete(tabId);
+});
+
+// Communication with Native Host
 function sendDownloadToNativeHost(payload) {
   try {
     chrome.runtime.sendNativeMessage(NATIVE_HOST, payload, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn('DPF Native Host error:', chrome.runtime.lastError.message);
-      } else {
-        console.log('DPF Native Host response:', response);
+        console.warn('DPF Native Host message note:', chrome.runtime.lastError.message);
       }
     });
   } catch (err) {
@@ -76,7 +144,7 @@ function sendDownloadToNativeHost(payload) {
   }
 }
 
-// Handle messages from content script
+// Messages from content script
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'DOWNLOAD_MEDIA') {
     sendDownloadToNativeHost({
@@ -87,6 +155,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       title: sender.tab ? sender.tab.title : ''
     });
     sendResponse({ status: 'sent' });
+  } else if (msg.action === 'GET_TAB_MEDIA') {
+    const tabId = sender.tab ? sender.tab.id : -1;
+    const media = detectedMediaByTab.get(tabId) || [];
+    sendResponse({ media });
   } else if (msg.action === 'BATCH_DOWNLOAD') {
     sendDownloadToNativeHost({
       action: 'BATCH_DOWNLOAD',

@@ -11,6 +11,11 @@ const segmentStats = document.getElementById('segmentStats');
 const globalStatus = document.getElementById('globalStatus');
 const globalSpeed = document.getElementById('globalSpeed');
 
+// Window Controls
+const btnWinMinimize = document.getElementById('btnWinMinimize');
+const btnWinMaximize = document.getElementById('btnWinMaximize');
+const btnWinClose = document.getElementById('btnWinClose');
+
 // Modals
 const modalAddUrl = document.getElementById('modalAddUrl');
 const inputUrl = document.getElementById('inputUrl');
@@ -61,6 +66,11 @@ async function init() {
   tasks = await ipcRenderer.invoke('get-tasks') || [];
   renderTasks();
   updateCategoryCounts();
+
+  // Custom Window Controls
+  if (btnWinMinimize) btnWinMinimize.addEventListener('click', () => ipcRenderer.invoke('window-minimize'));
+  if (btnWinMaximize) btnWinMaximize.addEventListener('click', () => ipcRenderer.invoke('window-maximize'));
+  if (btnWinClose) btnWinClose.addEventListener('click', () => ipcRenderer.invoke('window-close'));
 
   // Category selection
   document.querySelectorAll('.category-item').forEach(item => {
@@ -150,10 +160,40 @@ async function init() {
     await refreshBrowsersList();
   });
 
+  // Check update directly without hanging
   btnUpdate.addEventListener('click', async () => {
     modalUpdate.style.display = 'flex';
-    updateModalBody.innerHTML = 'Connecting to GitHub Releases API (github.com/dsnbw/dpf)...';
-    ipcRenderer.invoke('check-for-updates');
+    updateModalBody.innerHTML = '<div style="color: #94a3b8; font-size: 13px;">Connecting to GitHub Releases API (github.com/dsnbw/dpf)...</div>';
+
+    try {
+      const res = await ipcRenderer.invoke('check-for-updates');
+      if (res && res.hasUpdate) {
+        updateModalBody.innerHTML = `
+          <div style="color: #10b981; font-weight: bold; margin-bottom: 8px; font-size: 14px;">🚀 New Version Available: v${res.latestVersion}</div>
+          <div style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">Current version: v${res.currentVersion}</div>
+          <div style="background: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto;">
+            ${res.releaseNotes}
+          </div>
+          <div style="margin-top: 14px; text-align: right;">
+            <a href="${res.downloadUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+              Download v${res.latestVersion} Installer
+            </a>
+          </div>
+        `;
+      } else if (res && res.error) {
+        updateModalBody.innerHTML = `
+          <div style="color: #f87171; font-weight: bold; margin-bottom: 8px;">⚠️ Update Check Note</div>
+          <div style="color: #94a3b8; font-size: 12px;">${res.error}</div>
+        `;
+      } else {
+        updateModalBody.innerHTML = `
+          <div style="color: #38bdf8; font-weight: bold; margin-bottom: 8px; font-size: 14px;">✅ Downloader Pro Free is Up to Date</div>
+          <div style="color: #94a3b8; font-size: 12px;">You are currently running the latest release: v${res ? res.currentVersion : '1.0.1'}</div>
+        `;
+      }
+    } catch (err) {
+      updateModalBody.innerHTML = `<div style="color: #f87171;">Connection error: ${err.message}</div>`;
+    }
   });
 
   btnCloseUpdateModal.addEventListener('click', () => modalUpdate.style.display = 'none');
@@ -184,7 +224,7 @@ async function refreshBrowsersList() {
       </div>
       <div>
         <button class="btn btn-secondary btn-test-browser" data-name="${b.name}" style="font-size: 11px; padding: 4px 10px;">
-          Launch & Test
+          Launch & Enable
         </button>
       </div>
     `;
@@ -198,11 +238,11 @@ async function refreshBrowsersList() {
       btn.innerText = 'Launching...';
       try {
         await ipcRenderer.invoke('launch-browser-test', bName);
-        btn.innerText = 'Running!';
-        setTimeout(() => { btn.innerText = 'Launch & Test'; }, 3000);
+        btn.innerText = 'Active!';
+        setTimeout(() => { btn.innerText = 'Launch & Enable'; }, 3000);
       } catch (err) {
         alert('Failed to launch ' + bName + ': ' + err.message);
-        btn.innerText = 'Launch & Test';
+        btn.innerText = 'Launch & Enable';
       }
     });
   });
@@ -327,30 +367,6 @@ ipcRenderer.on('native-download-request', (event, msg) => {
     inputFilename.value = msg.filename || '';
     inputUrl.focus();
   }
-});
-
-// Auto-updater notification
-ipcRenderer.on('update-available', (event, info) => {
-  modalUpdate.style.display = 'flex';
-  updateModalBody.innerHTML = `
-    <div style="color: #10b981; font-weight: bold; margin-bottom: 8px;">🚀 New Version Available: v${info.latestVersion}</div>
-    <div style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">Current version: v${info.currentVersion}</div>
-    <div style="background: #0f172a; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto;">
-      ${info.releaseNotes}
-    </div>
-    <div style="margin-top: 14px; text-align: right;">
-      <a href="${info.downloadUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-        Download v${info.latestVersion} Installer
-      </a>
-    </div>
-  `;
-});
-
-ipcRenderer.on('update-not-available', (event, info) => {
-  updateModalBody.innerHTML = `
-    <div style="color: #38bdf8; font-weight: bold; margin-bottom: 8px;">✅ Downloader Pro Free is Up to Date</div>
-    <div style="color: #94a3b8; font-size: 12px;">You are running the latest version: v${info.currentVersion}</div>
-  `;
 });
 
 init();

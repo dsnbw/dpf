@@ -11,7 +11,7 @@ const files = [
 
 files.forEach(f => {
   const content = fs.readFileSync(f, 'utf-8');
-  const updated = content.replace('"version": "1.0.0"', '"version": "1.0.1"');
+  const updated = content.replace('"version": "1.0.1"', '"version": "1.0.2"');
   fs.writeFileSync(f, updated, 'utf-8');
-  console.log('Bumped', f, 'to 1.0.1');
+  console.log('Bumped', f, 'to 1.0.2');
 });

@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 // Resilient package resolver across dev, production, and asar packaging
@@ -27,7 +28,6 @@ const { LocalIpcServer } = require('./ipc-server');
 const { GitHubAutoUpdater } = require('./updater');
 
 let mainWindow = null;
-let tray = null;
 
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -43,7 +43,7 @@ taskStore.load();
 const scheduler = new QueueScheduler({ maxActiveTasks: 3 });
 const bandwidthLimiter = new BandwidthLimiter(0);
 const ipcServer = new LocalIpcServer();
-const updater = new GitHubAutoUpdater(app.getVersion());
+const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.2');
 
 function getAppIcon() {
   const possiblePaths = [
@@ -52,17 +52,21 @@ function getAppIcon() {
     path.join(__dirname, '../../../../build/icon.png')
   ];
   for (const p of possiblePaths) {
-    if (require('node:fs').existsSync(p)) return p;
+    if (fs.existsSync(p)) return p;
   }
   return undefined;
 }
 
 function createWindow() {
+  // Completely remove native application menu
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
-    width: 1080,
-    height: 700,
+    width: 1100,
+    height: 720,
     minWidth: 840,
     minHeight: 520,
+    frame: false, // Completely removes OS native title bar and borders
     backgroundColor: '#0f172a',
     icon: getAppIcon(),
     title: 'Downloader Pro Free (DPF)',
@@ -114,11 +118,18 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.webContents.send('download-error', data);
   });
 
-  // Check for updates on startup
-  updater.checkForUpdates();
+  // Auto-updater background check on launch
   updater.on('update-available', (info) => {
     if (mainWindow) mainWindow.webContents.send('update-available', info);
   });
+  updater.on('update-not-available', (info) => {
+    if (mainWindow) mainWindow.webContents.send('update-not-available', info);
+  });
+  updater.on('error', (err) => {
+    if (mainWindow) mainWindow.webContents.send('update-error', { error: err.message });
+  });
+
+  updater.checkForUpdates().catch(() => {});
 });
 
 app.on('second-instance', () => {
@@ -134,7 +145,25 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC handlers for Renderer
+// Custom Title Bar Window Controls
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+// Task Management IPC handlers
 ipcMain.handle('get-tasks', () => {
   return taskStore.getAllTasks();
 });
@@ -196,6 +225,7 @@ ipcMain.handle('delete-task', async (event, taskId) => {
   return { success: true };
 });
 
+// Browser Integration Handlers
 ipcMain.handle('register-browser-integration', async () => {
   return HostInstaller.register();
 });
@@ -211,14 +241,13 @@ ipcMain.handle('launch-browser-test', async (event, browserName) => {
     throw new Error(`Browser ${browserName} is not installed on this system.`);
   }
 
-  // Resolve unpacked extension path
   let extDir = path.resolve(__dirname, '../../../../dist/extension');
-  if (!require('fs').existsSync(extDir)) {
+  if (!fs.existsSync(extDir)) {
     extDir = path.join(app.getAppPath(), 'dist/extension');
   }
 
-  // Launch browser with extension loaded
-  const testUrl = 'https://www.google.com';
+  // Launch browser with extension loaded automatically
+  const testUrl = 'https://www.youtube.com';
   const child = spawn(target.executablePath, [
     `--load-extension=${extDir}`,
     testUrl
@@ -228,8 +257,9 @@ ipcMain.handle('launch-browser-test', async (event, browserName) => {
   return { success: true, browser: target.name, extDir };
 });
 
+// Auto-Updater Handler
 ipcMain.handle('check-for-updates', async () => {
-  return updater.checkForUpdates();
+  return await updater.checkForUpdates();
 });
 
 ipcMain.handle('open-file-location', (event, filePath) => {
