@@ -87,6 +87,19 @@ if (fs.existsSync(pemKeyPath)) {
   }
 }
 
+// Create portable ZIP for 1-click unpacked extension installation
+try {
+  const zipPath = path.resolve(__dirname, '../../dist/dpf-extension.zip');
+  if (process.platform === 'win32') {
+    execSync(`powershell -Command "Compress-Archive -Path '${distDir}\\*' -DestinationPath '${zipPath}' -Force"`, { stdio: 'ignore' });
+  } else {
+    execSync(`cd "${distDir}" && zip -r "${zipPath}" ./*`, { stdio: 'ignore' });
+  }
+  console.log('Successfully created dpf-extension.zip at:', zipPath);
+} catch (e) {
+  console.warn('Zip creation note:', e.message);
+}
+
 console.log('DPF WebExtension deployed to:');
 console.log(' - Dist:', distDir);
 console.log(' - User Profile:', homeExtDir);

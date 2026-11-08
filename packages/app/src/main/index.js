@@ -43,7 +43,7 @@ taskStore.load();
 const scheduler = new QueueScheduler({ maxActiveTasks: 3 });
 const bandwidthLimiter = new BandwidthLimiter(0);
 const ipcServer = new LocalIpcServer();
-const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.5');
+const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.6');
 
 function getAppIcon() {
   const possiblePaths = [
