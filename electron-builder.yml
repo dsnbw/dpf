@@ -1,0 +1,58 @@
+appId: com.dsnbw.dpf
+productName: Downloader Pro Free
+directories:
+  output: release
+  buildResources: build
+files:
+  - "packages/app/**/*"
+  - "packages/core/**/*"
+  - "packages/manager/**/*"
+  - "packages/native-host/**/*"
+  - "dist/extension/**/*"
+  - "!**/*.test.js"
+  - "!**/tests/**"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Downloader Pro Free (DPF)
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - universal
+  category: public.app-category.utilities
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Network
+
+publish:
+  provider: github
+  owner: dsnbw
+  repo: dpf
+  releaseType: release
