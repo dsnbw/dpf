@@ -26,8 +26,16 @@ const btnResume = document.getElementById('btnResume');
 const btnPause = document.getElementById('btnPause');
 const btnStopAll = document.getElementById('btnStopAll');
 const btnDelete = document.getElementById('btnDelete');
+const btnBrowsers = document.getElementById('btnBrowsers');
 const btnOptions = document.getElementById('btnOptions');
 const btnUpdate = document.getElementById('btnUpdate');
+
+// Browser modal
+const modalBrowsers = document.getElementById('modalBrowsers');
+const detectedBrowsersList = document.getElementById('detectedBrowsersList');
+const btnCloseBrowserModal = document.getElementById('btnCloseBrowserModal');
+const btnCloseBrowserDone = document.getElementById('btnCloseBrowserDone');
+const btnRegisterAllBrowsers = document.getElementById('btnRegisterAllBrowsers');
 
 // Update modal
 const modalUpdate = document.getElementById('modalUpdate');
@@ -119,9 +127,27 @@ async function init() {
     }
   });
 
+  // Browsers Manager Modal
+  btnBrowsers.addEventListener('click', async () => {
+    modalBrowsers.style.display = 'flex';
+    await refreshBrowsersList();
+  });
+
   btnOptions.addEventListener('click', async () => {
-    const res = await ipcRenderer.invoke('register-browser-integration');
-    alert('DPF Browser Integration registered successfully into Chrome, Edge, Brave, and Firefox!');
+    modalBrowsers.style.display = 'flex';
+    await refreshBrowsersList();
+  });
+
+  btnCloseBrowserModal.addEventListener('click', () => modalBrowsers.style.display = 'none');
+  btnCloseBrowserDone.addEventListener('click', () => modalBrowsers.style.display = 'none');
+
+  btnRegisterAllBrowsers.addEventListener('click', async () => {
+    btnRegisterAllBrowsers.disabled = true;
+    btnRegisterAllBrowsers.innerText = 'Registering...';
+    await ipcRenderer.invoke('register-browser-integration');
+    btnRegisterAllBrowsers.disabled = false;
+    btnRegisterAllBrowsers.innerText = '⚡ Re-register All Browsers';
+    await refreshBrowsersList();
   });
 
   btnUpdate.addEventListener('click', async () => {
@@ -132,6 +158,54 @@ async function init() {
 
   btnCloseUpdateModal.addEventListener('click', () => modalUpdate.style.display = 'none');
   btnCloseUpdate.addEventListener('click', () => modalUpdate.style.display = 'none');
+}
+
+async function refreshBrowsersList() {
+  detectedBrowsersList.innerHTML = '<div style="color: #94a3b8; font-size: 12px;">Scanning system...</div>';
+  const browsers = await ipcRenderer.invoke('detect-browsers') || [];
+
+  if (browsers.length === 0) {
+    detectedBrowsersList.innerHTML = '<div style="color: #f87171; font-size: 12px;">No supported browsers detected.</div>';
+    return;
+  }
+
+  detectedBrowsersList.innerHTML = '';
+  for (const b of browsers) {
+    const item = document.createElement('div');
+    item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #334155;';
+
+    item.innerHTML = `
+      <div>
+        <div style="font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 6px;">
+          <span>🌐</span> ${b.name}
+          <span style="font-size: 10px; background: #10b981; color: white; padding: 1px 6px; border-radius: 4px;">Detected</span>
+        </div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${b.executablePath}</div>
+      </div>
+      <div>
+        <button class="btn btn-secondary btn-test-browser" data-name="${b.name}" style="font-size: 11px; padding: 4px 10px;">
+          Launch & Test
+        </button>
+      </div>
+    `;
+
+    detectedBrowsersList.appendChild(item);
+  }
+
+  document.querySelectorAll('.btn-test-browser').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const bName = btn.dataset.name;
+      btn.innerText = 'Launching...';
+      try {
+        await ipcRenderer.invoke('launch-browser-test', bName);
+        btn.innerText = 'Running!';
+        setTimeout(() => { btn.innerText = 'Launch & Test'; }, 3000);
+      } catch (err) {
+        alert('Failed to launch ' + bName + ': ' + err.message);
+        btn.innerText = 'Launch & Test';
+      }
+    });
+  });
 }
 
 // Render Tasks Table
@@ -207,7 +281,6 @@ ipcRenderer.on('download-progress', (event, data) => {
     renderTasks();
     globalSpeed.innerText = `Total Speed: ${formatSpeed(data.speed)}`;
 
-    // If this is the currently selected task, render dynamic segment bars
     if (task.id === selectedTaskId && data.segments) {
       renderSegmentBars(data.segments, data.activeConnections);
     }

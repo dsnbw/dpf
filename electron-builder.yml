@@ -9,10 +9,12 @@ files:
   - "packages/manager/**/*"
   - "packages/native-host/**/*"
   - "dist/extension/**/*"
+  - "build/**/*"
   - "!**/*.test.js"
   - "!**/tests/**"
 
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
@@ -30,6 +32,7 @@ nsis:
   shortcutName: Downloader Pro Free (DPF)
 
 mac:
+  icon: build/icon.png
   target:
     - target: dmg
       arch:
@@ -42,6 +45,7 @@ mac:
   category: public.app-category.utilities
 
 linux:
+  icon: build/icon.png
   target:
     - target: AppImage
       arch:

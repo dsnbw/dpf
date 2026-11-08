@@ -21,6 +21,10 @@ class LocalIpcServer extends EventEmitter {
     this.server = net.createServer((socket) => {
       let buffer = '';
 
+      socket.on('error', () => {
+        // Handled: client disconnected
+      });
+
       socket.on('data', (chunk) => {
         buffer += chunk.toString('utf-8');
         const lines = buffer.split('\n');

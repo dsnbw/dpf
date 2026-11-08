@@ -1,9 +1,28 @@
 const { app, BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
-const { DownloadEngine } = require('@dpf/core');
-const { TaskStore, QueueScheduler, BandwidthLimiter, ClipboardWatcher } = require('@dpf/manager');
-const { HostInstaller } = require('@dpf/native-host');
+const { spawn } = require('node:child_process');
+
+// Resilient package resolver across dev, production, and asar packaging
+function safeLoad(name, relPath) {
+  try {
+    return require(name);
+  } catch (e1) {
+    try {
+      return require(path.resolve(__dirname, relPath));
+    } catch (e2) {
+      try {
+        return require(path.join(app.getAppPath(), 'packages', name.replace('@dpf/', ''), 'src'));
+      } catch (e3) {
+        throw new Error(`Failed to load module ${name}. Trace: ${e1.message} -> ${e2.message} -> ${e3.message}`);
+      }
+    }
+  }
+}
+
+const { DownloadEngine } = safeLoad('@dpf/core', '../../../core/src');
+const { TaskStore, QueueScheduler, BandwidthLimiter, ClipboardWatcher } = safeLoad('@dpf/manager', '../../../manager/src');
+const { HostInstaller } = safeLoad('@dpf/native-host', '../../../native-host/src');
 const { LocalIpcServer } = require('./ipc-server');
 const { GitHubAutoUpdater } = require('./updater');
 
@@ -26,13 +45,26 @@ const bandwidthLimiter = new BandwidthLimiter(0);
 const ipcServer = new LocalIpcServer();
 const updater = new GitHubAutoUpdater(app.getVersion());
 
+function getAppIcon() {
+  const possiblePaths = [
+    path.join(__dirname, '../renderer/icon.png'),
+    path.join(app.getAppPath(), 'build/icon.png'),
+    path.join(__dirname, '../../../../build/icon.png')
+  ];
+  for (const p of possiblePaths) {
+    if (require('node:fs').existsSync(p)) return p;
+  }
+  return undefined;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1080,
-    height: 680,
-    minWidth: 800,
-    minHeight: 500,
+    height: 700,
+    minWidth: 840,
+    minHeight: 520,
     backgroundColor: '#0f172a',
+    icon: getAppIcon(),
     title: 'Downloader Pro Free (DPF)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -50,6 +82,13 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Auto-register browser native host manifests on launch
+  try {
+    HostInstaller.register();
+  } catch (e) {
+    console.warn('Initial host registration note:', e.message);
+  }
 
   // Start Local IPC Server for Browser Native Messaging
   ipcServer.start();
@@ -159,6 +198,34 @@ ipcMain.handle('delete-task', async (event, taskId) => {
 
 ipcMain.handle('register-browser-integration', async () => {
   return HostInstaller.register();
+});
+
+ipcMain.handle('detect-browsers', async () => {
+  return HostInstaller.detectBrowsers();
+});
+
+ipcMain.handle('launch-browser-test', async (event, browserName) => {
+  const browsers = HostInstaller.detectBrowsers();
+  const target = browsers.find(b => b.name.toLowerCase().includes(browserName.toLowerCase()));
+  if (!target) {
+    throw new Error(`Browser ${browserName} is not installed on this system.`);
+  }
+
+  // Resolve unpacked extension path
+  let extDir = path.resolve(__dirname, '../../../../dist/extension');
+  if (!require('fs').existsSync(extDir)) {
+    extDir = path.join(app.getAppPath(), 'dist/extension');
+  }
+
+  // Launch browser with extension loaded
+  const testUrl = 'https://www.google.com';
+  const child = spawn(target.executablePath, [
+    `--load-extension=${extDir}`,
+    testUrl
+  ], { detached: true, stdio: 'ignore' });
+  child.unref();
+
+  return { success: true, browser: target.name, extDir };
 });
 
 ipcMain.handle('check-for-updates', async () => {
