@@ -1,0 +1,10 @@
+{
+  "name": "com.dpf.downloader",
+  "description": "Downloader Pro Free Native Messaging Host Helper",
+  "path": "dpf-native-host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://dpfdownloadermanagerchromeextensionid/",
+    "chrome-extension://*/"
+  ]
+}

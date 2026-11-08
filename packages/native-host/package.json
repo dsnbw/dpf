@@ -1,0 +1,14 @@
+{
+  "name": "@dpf/native-host",
+  "version": "1.0.0",
+  "description": "Downloader Pro Free - Native Messaging Host for Web Browsers",
+  "main": "src/index.js",
+  "bin": {
+    "dpf-native-host": "src/host.js"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "author": "dsnbw",
+  "license": "MIT"
+}
