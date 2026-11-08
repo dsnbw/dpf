@@ -1,6 +1,6 @@
 {
   "name": "@dpf/core",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Downloader Pro Free - High-speed Dynamic Segmentation Download Engine",
   "main": "src/index.js",
   "types": "src/index.d.ts",

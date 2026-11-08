@@ -13,7 +13,7 @@
       <div class="titlebar-left">
         <img src="icon.png" class="titlebar-logo" alt="DPF Logo" />
         <span class="titlebar-title">Downloader Pro Free</span>
-        <span class="titlebar-version">v1.0.2</span>
+        <span class="titlebar-version">v1.0.3</span>
       </div>
       <div class="titlebar-center">
         <span class="titlebar-status-text">Accelerated Dynamic Engine • Ready</span>
@@ -189,24 +189,31 @@
 
   <!-- Modal: Browser Integration Manager -->
   <div class="modal-overlay" id="modalBrowsers">
-    <div class="modal-dialog" style="width: 580px;">
+    <div class="modal-dialog" style="width: 620px;">
       <div class="modal-header">
-        <h3>Universal Browser Integration</h3>
+        <h3>Tích hợp Trình duyệt & Extension (Browser Integration)</h3>
         <button class="close-btn" id="btnCloseBrowserModal">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="color: #94a3b8; font-size: 12px; margin-bottom: 12px;">
-          DPF auto-detects installed web browsers and registers native messaging hooks so downloads and media streams are captured with 1-click.
-        </p>
+        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #a7f3d0; line-height: 1.5;">
+          <strong>✅ Tự động nhận diện & cài đặt:</strong> DPF tự động đăng ký Extension CRX và Native Messaging Host vào Windows Registry cho Brave, Google Chrome, Microsoft Edge, Firefox và Opera.
+        </div>
         <div id="detectedBrowsersList" style="margin-bottom: 14px;">
           <!-- Loaded dynamically -->
         </div>
+        <div style="background: #1e293b; border-radius: 6px; padding: 12px; border: 1px solid #334155; margin-bottom: 14px; font-size: 11px; color: #cbd5e1; line-height: 1.6;">
+          <div style="font-weight: 700; color: #38bdf8; margin-bottom: 4px;">💡 Hướng dẫn kích hoạt ngay trên trình duyệt đang mở:</div>
+          <div>1. Mở trang quản lý tiện ích: <code style="color: #f59e0b;">brave://extensions</code> hoặc <code style="color: #f59e0b;">chrome://extensions</code></div>
+          <div>2. Bật chế độ <b>Developer mode (Chế độ cho nhà phát triển)</b> ở góc trên.</div>
+          <div>3. Nhấn nút <b>Load unpacked (Tải tiện ích đã giải nén)</b> và dán (Ctrl+V) đường dẫn extension DPF -> Chọn thư mục.</div>
+        </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-primary" id="btnRegisterAllBrowsers">⚡ Re-register All Browsers</button>
+          <button class="btn btn-primary" id="btnRegisterAllBrowsers">⚡ Đăng ký lại toàn bộ trình duyệt</button>
+          <button class="btn btn-secondary" id="btnCopyExtPath">📋 Copy đường dẫn Extension</button>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="btnCloseBrowserDone">Done</button>
+        <button class="btn btn-secondary" id="btnCloseBrowserDone">Hoàn tất</button>
       </div>
     </div>
   </div>

@@ -3,6 +3,9 @@ const path = require('node:path');
 const os = require('node:os');
 const { execSync } = require('node:child_process');
 
+const EXTENSION_ID = 'gpplglnoeigamjdeljfbgkkpikmmjjao';
+const EXTENSION_VERSION = '1.0.3';
+
 class HostInstaller {
   /**
    * Detects all installed browsers on the host system.
@@ -21,7 +24,7 @@ class HostInstaller {
             path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
           ],
           regKey: 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.dpf.downloader',
-          extKey: 'HKCU\\Software\\Google\\Chrome\\Extensions\\llnaagambiafkpmdpmpcnaoegngcnkii'
+          extKey: `HKCU\\Software\\Google\\Chrome\\Extensions\\${EXTENSION_ID}`
         },
         {
           name: 'Microsoft Edge',
@@ -30,7 +33,7 @@ class HostInstaller {
             'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
           ],
           regKey: 'HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.dpf.downloader',
-          extKey: 'HKCU\\Software\\Microsoft\\Edge\\Extensions\\llnaagambiafkpmdpmpcnaoegngcnkii'
+          extKey: `HKCU\\Software\\Microsoft\\Edge\\Extensions\\${EXTENSION_ID}`
         },
         {
           name: 'Brave Browser',
@@ -39,7 +42,7 @@ class HostInstaller {
             path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe')
           ],
           regKey: 'HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\com.dpf.downloader',
-          extKey: 'HKCU\\Software\\BraveSoftware\\Brave-Browser\\Extensions\\llnaagambiafkpmdpmpcnaoegngcnkii'
+          extKey: `HKCU\\Software\\BraveSoftware\\Brave-Browser\\Extensions\\${EXTENSION_ID}`
         },
         {
           name: 'Mozilla Firefox',
@@ -80,13 +83,16 @@ class HostInstaller {
   }
 
   /**
-   * Registers the DPF Native Messaging Host into browser registries and config directories.
+   * Registers the DPF Native Messaging Host and Extension CRX into browser registries.
    * @param {string} [hostExecutablePath] 
    * @param {string[]} [allowedExtensionIds] 
    */
   static register(hostExecutablePath, allowedExtensionIds = []) {
     const platform = os.platform();
     const manifestDir = path.join(os.homedir(), '.dpf', 'native-host');
+    const homeExtDir = path.join(os.homedir(), '.dpf', 'extension');
+    const crxPath = path.join(homeExtDir, 'dpf-extension.crx');
+
     if (!fs.existsSync(manifestDir)) {
       fs.mkdirSync(manifestDir, { recursive: true });
     }
@@ -107,7 +113,6 @@ class HostInstaller {
     if (platform === 'win32') {
       launcherPath = path.join(manifestDir, 'dpf-native-host.bat');
       const nodeExe = hostExecutablePath || process.execPath;
-      // In electron, ELECTRON_RUN_AS_NODE=1 runs as pure node.js CLI
       const batContent = `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${nodeExe}" "${targetHost}" %*\r\n`;
       fs.writeFileSync(launcherPath, batContent, 'utf-8');
     } else {
@@ -118,6 +123,7 @@ class HostInstaller {
     }
 
     const chromeOrigins = [
+      `chrome-extension://${EXTENSION_ID}/`,
       'chrome-extension://llnaagambiafkpmdpmpcnaoegngcnkii/',
       'chrome-extension://*/',
       ...allowedExtensionIds.map(id => `chrome-extension://${id}/`)
@@ -145,24 +151,42 @@ class HostInstaller {
     fs.writeFileSync(firefoxManifestPath, JSON.stringify(firefoxManifest, null, 2), 'utf-8');
 
     const registered = [];
+    const registeredExtensions = [];
     const detected = HostInstaller.detectBrowsers();
 
     if (platform === 'win32') {
-      // Register for all detected and standard browsers
-      const standardKeys = [
+      // 1. Register Native Messaging Hosts
+      const nativeHostKeys = [
         'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.dpf.downloader',
         'HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.dpf.downloader',
         'HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\com.dpf.downloader',
         'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\com.dpf.downloader'
       ];
 
-      for (const key of standardKeys) {
+      for (const key of nativeHostKeys) {
         try {
           const isFirefox = key.includes('Mozilla');
           const targetPath = isFirefox ? firefoxManifestPath : chromeManifestPath;
           execSync(`reg add "${key}" /ve /t REG_SZ /d "${targetPath}" /f`, { stdio: 'ignore' });
           registered.push(key);
         } catch (e) {}
+      }
+
+      // 2. Register Extension CRX in Chromium browser registries (identical to IDM integration)
+      if (fs.existsSync(crxPath)) {
+        const extRegKeys = [
+          `HKCU\\Software\\Google\\Chrome\\Extensions\\${EXTENSION_ID}`,
+          `HKCU\\Software\\BraveSoftware\\Brave-Browser\\Extensions\\${EXTENSION_ID}`,
+          `HKCU\\Software\\Microsoft\\Edge\\Extensions\\${EXTENSION_ID}`
+        ];
+
+        for (const extKey of extRegKeys) {
+          try {
+            execSync(`reg add "${extKey}" /v path /t REG_SZ /d "${crxPath}" /f`, { stdio: 'ignore' });
+            execSync(`reg add "${extKey}" /v version /t REG_SZ /d "${EXTENSION_VERSION}" /f`, { stdio: 'ignore' });
+            registeredExtensions.push(extKey);
+          } catch (e) {}
+        }
       }
     } else if (platform === 'darwin') {
       const macTargets = [
@@ -195,10 +219,14 @@ class HostInstaller {
 
     return {
       success: true,
+      extensionId: EXTENSION_ID,
+      unpackedPath: homeExtDir,
+      crxPath: crxPath,
       registered,
+      registeredExtensions,
       detectedBrowsers: detected.map(b => b.name)
     };
   }
 }
 
-module.exports = { HostInstaller };
+module.exports = { HostInstaller, EXTENSION_ID };

@@ -57,5 +57,6 @@ jobs:
             release/*.dmg
             release/*.AppImage
             release/*.deb
+            dist/extension/dpf-extension.crx
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

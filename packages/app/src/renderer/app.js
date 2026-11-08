@@ -151,12 +151,22 @@ async function init() {
   btnCloseBrowserModal.addEventListener('click', () => modalBrowsers.style.display = 'none');
   btnCloseBrowserDone.addEventListener('click', () => modalBrowsers.style.display = 'none');
 
+  const btnCopyExtPath = document.getElementById('btnCopyExtPath');
+  if (btnCopyExtPath) {
+    btnCopyExtPath.addEventListener('click', async () => {
+      const p = await ipcRenderer.invoke('copy-extension-path');
+      btnCopyExtPath.innerText = '✅ Đã Copy Thư Mục!';
+      setTimeout(() => { btnCopyExtPath.innerText = '📋 Copy đường dẫn Extension'; }, 2500);
+    });
+  }
+
   btnRegisterAllBrowsers.addEventListener('click', async () => {
     btnRegisterAllBrowsers.disabled = true;
-    btnRegisterAllBrowsers.innerText = 'Registering...';
+    btnRegisterAllBrowsers.innerText = 'Đang đăng ký Registry...';
     await ipcRenderer.invoke('register-browser-integration');
     btnRegisterAllBrowsers.disabled = false;
-    btnRegisterAllBrowsers.innerText = '⚡ Re-register All Browsers';
+    btnRegisterAllBrowsers.innerText = '✅ Đã Đăng Ký Xong!';
+    setTimeout(() => { btnRegisterAllBrowsers.innerText = '⚡ Đăng ký lại toàn bộ trình duyệt'; }, 3000);
     await refreshBrowsersList();
   });
 
@@ -212,19 +222,19 @@ async function refreshBrowsersList() {
   detectedBrowsersList.innerHTML = '';
   for (const b of browsers) {
     const item = document.createElement('div');
-    item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #334155;';
+    item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 14px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #334155;';
 
     item.innerHTML = `
       <div>
-        <div style="font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 6px;">
-          <span>🌐</span> ${b.name}
-          <span style="font-size: 10px; background: #10b981; color: white; padding: 1px 6px; border-radius: 4px;">Detected</span>
+        <div style="font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px;">🌐</span> ${b.name}
+          <span style="font-size: 10px; background: #10b981; color: white; padding: 2px 7px; border-radius: 4px; font-weight: 600;">Đã nhận diện</span>
         </div>
-        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${b.executablePath}</div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 3px; font-family: monospace;">${b.executablePath}</div>
       </div>
-      <div>
-        <button class="btn btn-secondary btn-test-browser" data-name="${b.name}" style="font-size: 11px; padding: 4px 10px;">
-          Launch & Enable
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-primary btn-test-browser" data-name="${b.name}" style="font-size: 11px; padding: 5px 12px;">
+          🚀 Mở & Bật Extension
         </button>
       </div>
     `;
@@ -235,14 +245,14 @@ async function refreshBrowsersList() {
   document.querySelectorAll('.btn-test-browser').forEach(btn => {
     btn.addEventListener('click', async () => {
       const bName = btn.dataset.name;
-      btn.innerText = 'Launching...';
+      btn.innerText = 'Đang khởi chạy...';
       try {
         await ipcRenderer.invoke('launch-browser-test', bName);
-        btn.innerText = 'Active!';
-        setTimeout(() => { btn.innerText = 'Launch & Enable'; }, 3000);
+        btn.innerText = '✅ Đã Bật!';
+        setTimeout(() => { btn.innerText = '🚀 Mở & Bật Extension'; }, 3000);
       } catch (err) {
-        alert('Failed to launch ' + bName + ': ' + err.message);
-        btn.innerText = 'Launch & Enable';
+        alert('Lỗi khởi chạy ' + bName + ': ' + err.message);
+        btn.innerText = '🚀 Mở & Bật Extension';
       }
     });
   });

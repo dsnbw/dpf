@@ -3,6 +3,23 @@ const NATIVE_HOST = 'com.dpf.downloader';
 let isEnabled = true;
 const detectedMediaByTab = new Map();
 
+// Known YouTube ITAG mappings
+const ITAG_MAP = {
+  '18': { resolution: '360p', type: 'video', ext: 'mp4', label: '360p Medium (MP4)' },
+  '22': { resolution: '720p', type: 'video', ext: 'mp4', label: '720p HD (MP4)' },
+  '137': { resolution: '1080p', type: 'video', ext: 'mp4', label: '1080p Full HD (MP4)' },
+  '248': { resolution: '1080p', type: 'video', ext: 'webm', label: '1080p Full HD (WebM)' },
+  '136': { resolution: '720p', type: 'video', ext: 'mp4', label: '720p HD (MP4)' },
+  '247': { resolution: '720p', type: 'video', ext: 'webm', label: '720p HD (WebM)' },
+  '135': { resolution: '480p', type: 'video', ext: 'mp4', label: '480p Standard (MP4)' },
+  '244': { resolution: '480p', type: 'video', ext: 'webm', label: '480p Standard (WebM)' },
+  '134': { resolution: '360p', type: 'video', ext: 'mp4', label: '360p Medium (MP4)' },
+  '133': { resolution: '240p', type: 'video', ext: 'mp4', label: '240p Low (MP4)' },
+  '140': { resolution: '128k', type: 'audio', ext: 'm4a', label: '🎵 Audio M4A (128 kbps)' },
+  '251': { resolution: '160k', type: 'audio', ext: 'opus', label: '🎵 Audio Opus (160 kbps)' },
+  '250': { resolution: '70k', type: 'audio', ext: 'opus', label: '🎵 Audio Opus (70 kbps)' }
+};
+
 // Load settings
 chrome.storage.local.get(['dpfEnabled'], (result) => {
   if (result.dpfEnabled !== undefined) {
@@ -12,17 +29,19 @@ chrome.storage.local.get(['dpfEnabled'], (result) => {
 
 // Setup context menu
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'dpf-download-link',
-    title: 'Download with DPF',
-    contexts: ['link', 'image', 'video', 'audio']
-  });
+  try {
+    chrome.contextMenus.create({
+      id: 'dpf-download-link',
+      title: 'Download with DPF',
+      contexts: ['link', 'image', 'video', 'audio']
+    });
 
-  chrome.contextMenus.create({
-    id: 'dpf-download-all',
-    title: 'Download all links with DPF',
-    contexts: ['page']
-  });
+    chrome.contextMenus.create({
+      id: 'dpf-download-all',
+      title: 'Download all links with DPF',
+      contexts: ['page']
+    });
+  } catch (e) {}
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -43,7 +62,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// 1. Intercept file downloads from browser
+// 1. Intercept standard browser downloads
 chrome.downloads.onCreated.addListener((item) => {
   if (!isEnabled) return;
 
@@ -61,7 +80,7 @@ chrome.downloads.onCreated.addListener((item) => {
   });
 });
 
-// 2. Network Sniffer for Video / Audio Streams (HLS, DASH, MP4, WebM, MP3, YouTube streams)
+// 2. Network Sniffer for Video / Audio Streams
 const MEDIA_PATTERNS = [
   /\.(mp4|m4v|mkv|webm|flv|avi|mov|mp3|m4a|aac|wav|ogg)($|\?)/i,
   /\.(m3u8|mpd)($|\?)/i,
@@ -71,20 +90,61 @@ const MEDIA_PATTERNS = [
   /googlevideo\.com\/videoplayback/i
 ];
 
+function parseMediaDetails(url, headers = []) {
+  let contentType = '';
+  let contentLength = 0;
+
+  for (const h of headers) {
+    const name = (h.name || '').toLowerCase();
+    if (name === 'content-type') contentType = (h.value || '').toLowerCase();
+    if (name === 'content-length') contentLength = parseInt(h.value || '0', 10);
+  }
+
+  let label = '';
+  let ext = 'mp4';
+  let isAudio = false;
+
+  try {
+    const parsedUrl = new URL(url);
+    if (url.includes('googlevideo.com') || url.includes('videoplayback')) {
+      const itag = parsedUrl.searchParams.get('itag');
+      const clen = parsedUrl.searchParams.get('clen');
+      if (clen && !contentLength) contentLength = parseInt(clen, 10);
+
+      if (itag && ITAG_MAP[itag]) {
+        const info = ITAG_MAP[itag];
+        label = info.label;
+        ext = info.ext;
+        isAudio = info.type === 'audio';
+      }
+    }
+  } catch (e) {}
+
+  if (!label) {
+    if (contentType.includes('audio') || url.includes('.mp3') || url.includes('.m4a')) {
+      label = '🎵 Audio Stream';
+      isAudio = true;
+      ext = 'mp3';
+    } else if (contentType.includes('mpegurl') || url.includes('.m3u8')) {
+      label = '📺 HLS Live / Video Stream';
+      ext = 'm3u8';
+    } else {
+      label = '🎬 Video Stream';
+      ext = 'mp4';
+    }
+  }
+
+  return { contentType, contentLength, label, ext, isAudio };
+}
+
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (!isEnabled || details.tabId < 0) return;
 
-    let contentType = '';
-    let contentLength = 0;
-
-    if (details.responseHeaders) {
-      for (const h of details.responseHeaders) {
-        const name = h.name.toLowerCase();
-        if (name === 'content-type') contentType = (h.value || '').toLowerCase();
-        if (name === 'content-length') contentLength = parseInt(h.value || '0', 10);
-      }
-    }
+    const { contentType, contentLength, label, ext, isAudio } = parseMediaDetails(
+      details.url,
+      details.responseHeaders || []
+    );
 
     const isMediaMime = contentType.startsWith('video/') ||
                          contentType.startsWith('audio/') ||
@@ -94,8 +154,8 @@ chrome.webRequest.onHeadersReceived.addListener(
     const matchesPattern = MEDIA_PATTERNS.some(p => p.test(details.url));
 
     if (isMediaMime || matchesPattern) {
-      // Don't capture small thumbnails/icons
-      if (contentLength > 0 && contentLength < 65536 && !contentType.includes('mpegurl')) {
+      // Skip tiny video ads / segments < 100KB unless m3u8
+      if (contentLength > 0 && contentLength < 102400 && !contentType.includes('mpegurl') && !details.url.includes('videoplayback')) {
         return;
       }
 
@@ -103,6 +163,9 @@ chrome.webRequest.onHeadersReceived.addListener(
         url: details.url,
         mime: contentType,
         size: contentLength,
+        label: label,
+        ext: ext,
+        isAudio: isAudio,
         timestamp: Date.now()
       };
 
@@ -111,10 +174,18 @@ chrome.webRequest.onHeadersReceived.addListener(
       }
 
       const tabList = detectedMediaByTab.get(details.tabId);
-      // Avoid duplicates
-      if (!tabList.some(m => m.url === details.url)) {
+      // Clean up old entries if too many
+      if (tabList.length > 50) tabList.shift();
+
+      // Deduplicate by clean URL or itag
+      const isDuplicate = tabList.some(m => {
+        if (m.url === details.url) return true;
+        if (m.label === label && label && label.includes('p ') && (Date.now() - m.timestamp < 10000)) return true;
+        return false;
+      });
+
+      if (!isDuplicate) {
         tabList.push(mediaItem);
-        // Notify tab content script to update grabber UI
         chrome.tabs.sendMessage(details.tabId, {
           action: 'MEDIA_DETECTED',
           media: mediaItem,
@@ -136,15 +207,30 @@ function sendDownloadToNativeHost(payload) {
   try {
     chrome.runtime.sendNativeMessage(NATIVE_HOST, payload, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn('DPF Native Host message note:', chrome.runtime.lastError.message);
+        console.warn('Native Host note:', chrome.runtime.lastError.message);
+        // Fallback: If native host fails or DPF desktop app is closed, trigger browser download
+        if (payload.action === 'DOWNLOAD_URL' && payload.url) {
+          chrome.downloads.download({
+            url: payload.url,
+            filename: payload.filename || undefined,
+            saveAs: true
+          });
+        }
       }
     });
   } catch (err) {
     console.error('Failed to communicate with DPF Native Host:', err);
+    if (payload.action === 'DOWNLOAD_URL' && payload.url) {
+      chrome.downloads.download({
+        url: payload.url,
+        filename: payload.filename || undefined,
+        saveAs: true
+      });
+    }
   }
 }
 
-// Messages from content script
+// Messages from content script or popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'DOWNLOAD_MEDIA') {
     sendDownloadToNativeHost({
@@ -167,4 +253,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     sendResponse({ status: 'sent' });
   }
+  return true;
 });

@@ -1,133 +1,221 @@
 (function () {
   'use strict';
 
-  let detectedMediaStreams = [];
-  let floatingWidget = null;
+  // State
+  let detectedStreams = [];
+  let currentGrabberElement = null;
+  let isClosedByUser = false;
 
-  // Create or get the persistent floating grabber panel
-  function getOrCreateWidget() {
-    if (floatingWidget && document.body.contains(floatingWidget)) {
-      return floatingWidget;
-    }
-
-    floatingWidget = document.createElement('div');
-    floatingWidget.className = 'dpf-grabber-widget';
-    floatingWidget.innerHTML = `
-      <div class="dpf-grabber-button" id="dpfGrabberTrigger">
-        <svg class="dpf-grabber-icon" viewBox="0 0 24 24" width="16" height="16" fill="white">
-          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
-        </svg>
-        <span id="dpfGrabberText">Download with DPF</span>
-        <span class="dpf-badge" id="dpfStreamCount" style="display:none;">0</span>
-      </div>
-      <div class="dpf-dropdown-menu" id="dpfDropdownMenu">
-        <!-- Media stream items -->
-      </div>
-    `;
-
-    document.documentElement.appendChild(floatingWidget);
-
-    const trigger = floatingWidget.querySelector('#dpfGrabberTrigger');
-    const dropdown = floatingWidget.querySelector('#dpfDropdownMenu');
-
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (detectedMediaStreams.length > 1) {
-        dropdown.classList.toggle('dpf-show');
-      } else if (detectedMediaStreams.length === 1) {
-        triggerDownload(detectedMediaStreams[0].url);
-      } else {
-        // Fallback: check current video/audio element or page
-        const video = document.querySelector('video, audio');
-        const url = video && (video.currentSrc || video.src) ? (video.currentSrc || video.src) : window.location.href;
-        triggerDownload(url);
-      }
-    });
-
-    document.addEventListener('click', () => {
-      if (dropdown) dropdown.classList.remove('dpf-show');
-    });
-
-    return floatingWidget;
+  function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '';
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1) return ` (${mb.toFixed(1)} MB)`;
+    const kb = bytes / 1024;
+    return ` (${kb.toFixed(0)} KB)`;
   }
 
-  function triggerDownload(targetUrl) {
-    let cleanTitle = document.title ? document.title.replace(/[\\/:*?"<>|]/g, '_').trim() : 'media';
-    if (cleanTitle.toLowerCase().endsWith(' - youtube')) {
-      cleanTitle = cleanTitle.substring(0, cleanTitle.length - 10).trim();
+  function getCleanVideoTitle() {
+    let title = document.title || 'video';
+    title = title.replace(/[\\/:*?"<>|]/g, '_').trim();
+    if (title.toLowerCase().endsWith(' - youtube')) {
+      title = title.substring(0, title.length - 10).trim();
+    }
+    return title;
+  }
+
+  function triggerDownload(url, extHint = 'mp4', customLabel = '') {
+    const title = getCleanVideoTitle();
+    let ext = extHint;
+    if (url.includes('.mp3') || url.includes('mime=audio') || extHint === 'mp3') {
+      ext = 'mp3';
+    } else if (url.includes('.m4a')) {
+      ext = 'm4a';
     }
 
-    let ext = '.mp4';
-    if (targetUrl.includes('.mp3') || targetUrl.includes('mime=audio') || targetUrl.includes('.m4a')) {
-      ext = '.mp3';
-    }
+    const filename = `${title}.${ext}`;
 
     chrome.runtime.sendMessage({
       action: 'DOWNLOAD_MEDIA',
-      url: targetUrl,
-      filename: `${cleanTitle}${ext}`
+      url: url,
+      filename: filename
     });
   }
 
-  function updateWidgetUI() {
-    const widget = getOrCreateWidget();
-    const countBadge = widget.querySelector('#dpfStreamCount');
-    const dropdown = widget.querySelector('#dpfDropdownMenu');
-    const grabberText = widget.querySelector('#dpfGrabberText');
+  // Find video player container
+  function findVideoPlayer() {
+    // 1. YouTube player
+    const ytPlayer = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+    if (ytPlayer && ytPlayer.offsetWidth > 150) {
+      return { container: ytPlayer, isYouTube: true };
+    }
 
-    if (detectedMediaStreams.length > 0) {
-      widget.classList.add('dpf-active');
+    // 2. Generic HTML5 video or audio
+    const videos = Array.from(document.querySelectorAll('video, audio'));
+    for (const v of videos) {
+      const rect = v.getBoundingClientRect();
+      if ((rect.width > 120 && rect.height > 80) || v.tagName.toLowerCase() === 'audio') {
+        const parent = v.parentElement || document.body;
+        return { container: parent, videoElement: v, isYouTube: false };
+      }
+    }
+
+    return null;
+  }
+
+  function createOrUpdateGrabber() {
+    if (isClosedByUser) return;
+
+    const playerInfo = findVideoPlayer();
+    if (!playerInfo) return;
+
+    const { container, isYouTube, videoElement } = playerInfo;
+
+    // Check if grabber already attached to this container
+    let bar = container.querySelector('.dpf-idm-grabber-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'dpf-idm-grabber-bar';
+      bar.innerHTML = `
+        <div class="dpf-grabber-main-btn" title="Download this video with Downloader Pro Free">
+          <span class="dpf-play-icon">▶</span>
+          <span class="dpf-text">Download this video</span>
+          <span class="dpf-count-badge" style="display:none;">0</span>
+        </div>
+        <button class="dpf-sub-btn dpf-btn-help" title="Downloader Pro Free - Max Speed Downloader">❓</button>
+        <button class="dpf-sub-btn dpf-btn-close" title="Hide download bar for this video">✖</button>
+        <div class="dpf-dropdown-menu"></div>
+      `;
+
+      // Attach inside container
+      if (window.getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+      }
+      container.appendChild(bar);
+
+      // Event handlers
+      const mainBtn = bar.querySelector('.dpf-grabber-main-btn');
+      const dropdown = bar.querySelector('.dpf-dropdown-menu');
+      const btnHelp = bar.querySelector('.dpf-btn-help');
+      const btnClose = bar.querySelector('.dpf-btn-close');
+
+      mainBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+
+        if (detectedStreams.length > 1) {
+          dropdown.classList.toggle('dpf-show');
+        } else if (detectedStreams.length === 1) {
+          triggerDownload(detectedStreams[0].url, detectedStreams[0].ext || 'mp4', detectedStreams[0].label);
+        } else {
+          // Fallback: Use direct video src or page URL
+          let fallbackUrl = '';
+          if (videoElement && (videoElement.currentSrc || videoElement.src)) {
+            fallbackUrl = videoElement.currentSrc || videoElement.src;
+          } else if (isYouTube) {
+            fallbackUrl = window.location.href;
+          }
+          if (fallbackUrl) {
+            triggerDownload(fallbackUrl, 'mp4', 'Direct Video Stream');
+          }
+        }
+      });
+
+      btnHelp.addEventListener('click', (e) => {
+        e.stopPropagation();
+        alert('Downloader Pro Free (DPF) Integration\n- Multi-stream high speed dynamic download\n- Click "Download this video" or choose resolution from dropdown.');
+      });
+
+      btnClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isClosedByUser = true;
+        bar.remove();
+      });
+
+      document.addEventListener('click', () => {
+        dropdown.classList.remove('dpf-show');
+      });
+    }
+
+    // Update Dropdown streams list
+    const countBadge = bar.querySelector('.dpf-count-badge');
+    const dropdown = bar.querySelector('.dpf-dropdown-menu');
+
+    if (detectedStreams.length > 0) {
       countBadge.style.display = 'inline-block';
-      countBadge.innerText = detectedMediaStreams.length;
-      grabberText.innerText = 'Download Video / Audio';
+      countBadge.innerText = detectedStreams.length;
 
       dropdown.innerHTML = '';
-      detectedMediaStreams.forEach((m, idx) => {
+
+      detectedStreams.forEach((stream, idx) => {
         const item = document.createElement('div');
-        item.className = 'dpf-menu-item';
-        const isAudio = m.mime.includes('audio') || m.url.includes('.mp3');
-        const label = isAudio ? `🎵 Audio Stream #${idx + 1}` : `🎬 Video Stream #${idx + 1}`;
-        item.innerHTML = `<span>${label}</span> <span style="font-size:10px; color:#94a3b8;">${m.size ? (m.size/1024/1024).toFixed(1)+' MB' : 'Direct'}</span>`;
+        item.className = 'dpf-stream-item';
+        const sizeText = formatBytes(stream.size);
+        const icon = stream.isAudio ? '🎵' : '🎬';
+        const label = stream.label || `${icon} Stream #${idx + 1}`;
+
+        item.innerHTML = `
+          <div class="dpf-stream-info">
+            <span class="dpf-stream-name">${label}</span>
+            <span class="dpf-stream-meta">${sizeText}</span>
+          </div>
+          <span class="dpf-download-action">Download</span>
+        `;
 
         item.addEventListener('click', (e) => {
           e.stopPropagation();
           dropdown.classList.remove('dpf-show');
-          triggerDownload(m.url);
+          triggerDownload(stream.url, stream.ext || 'mp4', stream.label);
         });
 
         dropdown.appendChild(item);
       });
-    }
 
-    // Position relative to primary video player if present
-    const player = document.querySelector('.html5-video-player, video, audio, #movie_player, .video-player');
-    if (player) {
-      const rect = player.getBoundingClientRect();
-      if (rect.width > 200 && rect.height > 100 && rect.top < window.innerHeight && rect.bottom > 0) {
-        widget.style.top = `${Math.max(12, rect.top + window.scrollY + 12)}px`;
-        widget.style.right = `${Math.max(12, window.innerWidth - rect.right - window.scrollX + 16)}px`;
-        return;
+      // Quick download all option if multiple
+      if (detectedStreams.length > 1) {
+        const itemAll = document.createElement('div');
+        itemAll.className = 'dpf-stream-item dpf-stream-best';
+        itemAll.innerHTML = `
+          <div class="dpf-stream-info">
+            <span class="dpf-stream-name">⚡ Download Highest Quality</span>
+          </div>
+        `;
+        itemAll.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dropdown.classList.remove('dpf-show');
+          triggerDownload(detectedStreams[0].url, detectedStreams[0].ext || 'mp4', detectedStreams[0].label);
+        });
+        dropdown.insertBefore(itemAll, dropdown.firstChild);
       }
+    } else {
+      countBadge.style.display = 'none';
+      dropdown.innerHTML = `
+        <div class="dpf-stream-item dpf-stream-best">
+          <div class="dpf-stream-info">
+            <span class="dpf-stream-name">⚡ Download Current Video</span>
+          </div>
+        </div>
+      `;
+      dropdown.querySelector('.dpf-stream-item').addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.remove('dpf-show');
+        triggerDownload(window.location.href, 'mp4');
+      });
     }
 
-    // Default top-right fixed positioning
-    widget.style.top = '16px';
-    widget.style.right = '20px';
+    currentGrabberElement = bar;
   }
 
-  // Listen for background sniffer events
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Listen for media detected from background sniffer
+  chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'MEDIA_DETECTED' && msg.media) {
-      if (!detectedMediaStreams.some(m => m.url === msg.media.url)) {
-        detectedMediaStreams.push(msg.media);
-        updateWidgetUI();
+      if (!detectedStreams.some(s => s.url === msg.media.url)) {
+        detectedStreams.push(msg.media);
+        createOrUpdateGrabber();
       }
     } else if (msg.action === 'GET_ALL_LINKS') {
       const links = Array.from(document.querySelectorAll('a[href]'))
         .map(a => a.href)
-        .filter(href => href.startsWith('http://') || href.startsWith('https://'));
+        .filter(h => h.startsWith('http://') || h.startsWith('https://'));
       chrome.runtime.sendMessage({
         action: 'BATCH_DOWNLOAD',
         urls: Array.from(new Set(links))
@@ -135,40 +223,39 @@
     }
   });
 
-  // Query background for already detected media on this tab
+  // Query background for existing streams on this tab
   chrome.runtime.sendMessage({ action: 'GET_TAB_MEDIA' }, (res) => {
-    if (res && res.media && res.media.length > 0) {
-      detectedMediaStreams = res.media;
-      updateWidgetUI();
+    if (res && res.media && Array.isArray(res.media)) {
+      detectedStreams = res.media;
+      createOrUpdateGrabber();
     }
   });
 
-  // DOM scan for HTML5 video/audio elements
-  function checkMediaElements() {
-    const media = document.querySelectorAll('video, audio');
-    if (media.length > 0) {
-      let found = false;
-      media.forEach(el => {
-        const src = el.currentSrc || el.src;
-        if (src && !src.startsWith('blob:') && !detectedMediaStreams.some(m => m.url === src)) {
-          detectedMediaStreams.push({ url: src, mime: el.tagName.toLowerCase() === 'audio' ? 'audio/mpeg' : 'video/mp4' });
-          found = true;
-        }
-      });
-      // Always show widget if video/audio is on page
-      getOrCreateWidget().classList.add('dpf-active');
-      updateWidgetUI();
-    }
-  }
+  // Reset closed state on YouTube SPA navigation
+  window.addEventListener('yt-navigate-finish', () => {
+    isClosedByUser = false;
+    detectedStreams = [];
+    setTimeout(createOrUpdateGrabber, 500);
+    setTimeout(createOrUpdateGrabber, 1500);
+  });
 
-  // Periodic check & mutation observer
-  setInterval(checkMediaElements, 2500);
-  const observer = new MutationObserver(() => checkMediaElements());
+  window.addEventListener('yt-page-data-updated', () => {
+    setTimeout(createOrUpdateGrabber, 500);
+  });
+
+  // Check on DOM changes
+  const observer = new MutationObserver(() => {
+    createOrUpdateGrabber();
+  });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
+  // Periodic polling
+  setInterval(createOrUpdateGrabber, 1200);
+
+  // Initial load
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkMediaElements);
+    document.addEventListener('DOMContentLoaded', createOrUpdateGrabber);
   } else {
-    checkMediaElements();
+    createOrUpdateGrabber();
   }
 })();

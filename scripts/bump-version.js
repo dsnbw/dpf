@@ -1,4 +1,6 @@
 const fs = require('fs');
+const targetVersion = process.argv[2] || '1.0.3';
+
 const files = [
   'package.json',
   'packages/app/package.json',
@@ -10,8 +12,10 @@ const files = [
 ];
 
 files.forEach(f => {
-  const content = fs.readFileSync(f, 'utf-8');
-  const updated = content.replace('"version": "1.0.1"', '"version": "1.0.2"');
-  fs.writeFileSync(f, updated, 'utf-8');
-  console.log('Bumped', f, 'to 1.0.2');
+  if (fs.existsSync(f)) {
+    const content = fs.readFileSync(f, 'utf-8');
+    const updated = content.replace(/"version":\s*"[^"]+"/, `"version": "${targetVersion}"`);
+    fs.writeFileSync(f, updated, 'utf-8');
+    console.log(`Bumped ${f} to ${targetVersion}`);
+  }
 });

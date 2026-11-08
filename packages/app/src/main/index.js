@@ -43,7 +43,7 @@ taskStore.load();
 const scheduler = new QueueScheduler({ maxActiveTasks: 3 });
 const bandwidthLimiter = new BandwidthLimiter(0);
 const ipcServer = new LocalIpcServer();
-const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.2');
+const updater = new GitHubAutoUpdater(app.getVersion() || '1.0.3');
 
 function getAppIcon() {
   const possiblePaths = [
@@ -58,7 +58,7 @@ function getAppIcon() {
 }
 
 function createWindow() {
-  // Completely remove native application menu
+  // Completely remove native application menu and hide OS menu bars
   Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
@@ -67,6 +67,7 @@ function createWindow() {
     minWidth: 840,
     minHeight: 520,
     frame: false, // Completely removes OS native title bar and borders
+    autoHideMenuBar: true, // Prevents Alt key from showing default OS menu
     backgroundColor: '#0f172a',
     icon: getAppIcon(),
     title: 'Downloader Pro Free (DPF)',
@@ -76,6 +77,8 @@ function createWindow() {
       contextIsolation: false
     }
   });
+
+  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
@@ -234,6 +237,13 @@ ipcMain.handle('detect-browsers', async () => {
   return HostInstaller.detectBrowsers();
 });
 
+ipcMain.handle('copy-extension-path', () => {
+  const homeExtDir = path.join(os.homedir(), '.dpf', 'extension');
+  const { clipboard } = require('electron');
+  clipboard.writeText(homeExtDir);
+  return homeExtDir;
+});
+
 ipcMain.handle('launch-browser-test', async (event, browserName) => {
   const browsers = HostInstaller.detectBrowsers();
   const target = browsers.find(b => b.name.toLowerCase().includes(browserName.toLowerCase()));
@@ -241,20 +251,24 @@ ipcMain.handle('launch-browser-test', async (event, browserName) => {
     throw new Error(`Browser ${browserName} is not installed on this system.`);
   }
 
-  let extDir = path.resolve(__dirname, '../../../../dist/extension');
-  if (!fs.existsSync(extDir)) {
-    extDir = path.join(app.getAppPath(), 'dist/extension');
-  }
+  const homeExtDir = path.join(os.homedir(), '.dpf', 'extension');
+  const { clipboard } = require('electron');
+  clipboard.writeText(homeExtDir);
 
-  // Launch browser with extension loaded automatically
+  // Auto-deploy latest extension files and registry
+  try {
+    HostInstaller.register();
+  } catch (e) {}
+
+  // Launch browser with extension loaded automatically pointing to YouTube
   const testUrl = 'https://www.youtube.com';
   const child = spawn(target.executablePath, [
-    `--load-extension=${extDir}`,
+    `--load-extension=${homeExtDir}`,
     testUrl
   ], { detached: true, stdio: 'ignore' });
   child.unref();
 
-  return { success: true, browser: target.name, extDir };
+  return { success: true, browser: target.name, extDir: homeExtDir };
 });
 
 // Auto-Updater Handler
