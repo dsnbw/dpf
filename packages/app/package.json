@@ -16,6 +16,6 @@
     "electron": "^34.2.0",
     "electron-builder": "^25.1.8"
   },
-  "author": "dsnbw",
+  "author": "dsnbw <dsnbw@users.noreply.github.com>",
   "license": "MIT"
 }
