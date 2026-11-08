@@ -1,6 +1,6 @@
 {
   "name": "downloader-pro-free",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Downloader Pro Free (DPF) - High-speed multi-connection dynamic segmentation download manager",
   "main": "packages/app/src/main/index.js",
   "author": "dsnbw <dsnbw@users.noreply.github.com>",

@@ -172,21 +172,17 @@ class HostInstaller {
         } catch (e) {}
       }
 
-      // 2. Register Extension CRX in Chromium browser registries (identical to IDM integration)
-      if (fs.existsSync(crxPath)) {
-        const extRegKeys = [
-          `HKCU\\Software\\Google\\Chrome\\Extensions\\${EXTENSION_ID}`,
-          `HKCU\\Software\\BraveSoftware\\Brave-Browser\\Extensions\\${EXTENSION_ID}`,
-          `HKCU\\Software\\Microsoft\\Edge\\Extensions\\${EXTENSION_ID}`
-        ];
+      // 2. Remove any stale external CRX registry keys to prevent Chromium reason 256 block
+      const extRegKeys = [
+        `HKCU\\Software\\Google\\Chrome\\Extensions\\${EXTENSION_ID}`,
+        `HKCU\\Software\\BraveSoftware\\Brave-Browser\\Extensions\\${EXTENSION_ID}`,
+        `HKCU\\Software\\Microsoft\\Edge\\Extensions\\${EXTENSION_ID}`
+      ];
 
-        for (const extKey of extRegKeys) {
-          try {
-            execSync(`reg add "${extKey}" /v path /t REG_SZ /d "${crxPath}" /f`, { stdio: 'ignore' });
-            execSync(`reg add "${extKey}" /v version /t REG_SZ /d "${EXTENSION_VERSION}" /f`, { stdio: 'ignore' });
-            registeredExtensions.push(extKey);
-          } catch (e) {}
-        }
+      for (const extKey of extRegKeys) {
+        try {
+          execSync(`reg delete "${extKey}" /f`, { stdio: 'ignore' });
+        } catch (e) {}
       }
     } else if (platform === 'darwin') {
       const macTargets = [

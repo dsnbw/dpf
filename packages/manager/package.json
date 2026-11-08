@@ -1,6 +1,6 @@
 {
   "name": "@dpf/manager",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Downloader Pro Free - Task Store, Queue Scheduler, and Bandwidth Limiter",
   "main": "src/index.js",
   "scripts": {

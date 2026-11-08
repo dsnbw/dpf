@@ -1,7 +1,88 @@
 (function () {
   'use strict';
 
-  // State
+  // Common file extensions intercepted by download managers (IDM parity)
+  const DOWNLOAD_EXTENSIONS = new Set([
+    // Compressed / Archives
+    'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'cab', 'tgz', 'tbz2', 'z', 'lz', 'dmg',
+    // Executables / Installers
+    'exe', 'msi', 'apk', 'pkg', 'deb', 'rpm', 'appimage', 'jar', 'run', 'bin',
+    // Audio
+    'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus',
+    // Video
+    'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp',
+    // Documents
+    'pdf', 'epub', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    // Disk images & torrents
+    'torrent', 'img', 'vhd', 'vhdx'
+  ]);
+
+  function isDownloadableUrl(url) {
+    if (!url || typeof url !== 'string') return { isMatch: false };
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (!['http:', 'https:'].includes(parsed.protocol)) return { isMatch: false };
+
+      // Check pathname
+      const pathname = parsed.pathname;
+      const dotIndex = pathname.lastIndexOf('.');
+      if (dotIndex !== -1) {
+        const ext = pathname.substring(dotIndex + 1).toLowerCase();
+        if (DOWNLOAD_EXTENSIONS.has(ext)) {
+          return { isMatch: true, ext, filename: decodeURIComponent(pathname.substring(pathname.lastIndexOf('/') + 1)) };
+        }
+      }
+
+      // Check query params (e.g. ?file=archive.zip or ?download=app.exe)
+      for (const [, val] of parsed.searchParams.entries()) {
+        const pDot = val.lastIndexOf('.');
+        if (pDot !== -1) {
+          const ext = val.substring(pDot + 1).toLowerCase();
+          if (DOWNLOAD_EXTENSIONS.has(ext)) {
+            return { isMatch: true, ext, filename: decodeURIComponent(val.substring(val.lastIndexOf('/') + 1)) };
+          }
+        }
+      }
+    } catch (e) {}
+    return { isMatch: false };
+  }
+
+  // 1. Automatic Download Link Interception
+  document.addEventListener('click', (e) => {
+    // IDM standard: holding Alt key bypasses download interception
+    if (e.altKey) return;
+
+    const anchor = e.target.closest('a[href]');
+    if (!anchor || !anchor.href) return;
+
+    const href = anchor.href;
+    const hasDownloadAttr = anchor.hasAttribute('download');
+    const match = isDownloadableUrl(href);
+
+    if (hasDownloadAttr || match.isMatch) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      let filename = anchor.getAttribute('download') || '';
+      if (!filename && match.filename) {
+        filename = match.filename;
+      }
+      if (!filename) {
+        try {
+          const p = new URL(href).pathname;
+          filename = decodeURIComponent(p.substring(p.lastIndexOf('/') + 1));
+        } catch (err) {}
+      }
+
+      chrome.runtime.sendMessage({
+        action: 'DOWNLOAD_MEDIA',
+        url: href,
+        filename: filename || 'download.bin'
+      });
+    }
+  }, true);
+
+  // 2. Video & Audio Grabber Floating Widget (IDM Parity)
   let detectedStreams = [];
   let currentGrabberElement = null;
   let isClosedByUser = false;
@@ -41,15 +122,14 @@
     });
   }
 
-  // Find video player container
   function findVideoPlayer() {
-    // 1. YouTube player
+    // YouTube player container
     const ytPlayer = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
     if (ytPlayer && ytPlayer.offsetWidth > 150) {
       return { container: ytPlayer, isYouTube: true };
     }
 
-    // 2. Generic HTML5 video or audio
+    // Generic HTML5 video or audio
     const videos = Array.from(document.querySelectorAll('video, audio'));
     for (const v of videos) {
       const rect = v.getBoundingClientRect();
@@ -70,7 +150,6 @@
 
     const { container, isYouTube, videoElement } = playerInfo;
 
-    // Check if grabber already attached to this container
     let bar = container.querySelector('.dpf-idm-grabber-bar');
     if (!bar) {
       bar = document.createElement('div');
@@ -86,13 +165,11 @@
         <div class="dpf-dropdown-menu"></div>
       `;
 
-      // Attach inside container
       if (window.getComputedStyle(container).position === 'static') {
         container.style.position = 'relative';
       }
       container.appendChild(bar);
 
-      // Event handlers
       const mainBtn = bar.querySelector('.dpf-grabber-main-btn');
       const dropdown = bar.querySelector('.dpf-dropdown-menu');
       const btnHelp = bar.querySelector('.dpf-btn-help');
@@ -107,7 +184,6 @@
         } else if (detectedStreams.length === 1) {
           triggerDownload(detectedStreams[0].url, detectedStreams[0].ext || 'mp4', detectedStreams[0].label);
         } else {
-          // Fallback: Use direct video src or page URL
           let fallbackUrl = '';
           if (videoElement && (videoElement.currentSrc || videoElement.src)) {
             fallbackUrl = videoElement.currentSrc || videoElement.src;
@@ -136,7 +212,6 @@
       });
     }
 
-    // Update Dropdown streams list
     const countBadge = bar.querySelector('.dpf-count-badge');
     const dropdown = bar.querySelector('.dpf-dropdown-menu');
 
@@ -170,7 +245,6 @@
         dropdown.appendChild(item);
       });
 
-      // Quick download all option if multiple
       if (detectedStreams.length > 1) {
         const itemAll = document.createElement('div');
         itemAll.className = 'dpf-stream-item dpf-stream-best';
@@ -231,7 +305,7 @@
     }
   });
 
-  // Reset closed state on YouTube SPA navigation
+  // YouTube SPA navigation reset
   window.addEventListener('yt-navigate-finish', () => {
     isClosedByUser = false;
     detectedStreams = [];
@@ -243,16 +317,14 @@
     setTimeout(createOrUpdateGrabber, 500);
   });
 
-  // Check on DOM changes
+  // Check DOM mutations and polling
   const observer = new MutationObserver(() => {
     createOrUpdateGrabber();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
-  // Periodic polling
   setInterval(createOrUpdateGrabber, 1200);
 
-  // Initial load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', createOrUpdateGrabber);
   } else {

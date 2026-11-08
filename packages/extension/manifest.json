@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Downloader Pro Free (DPF) Integration",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "High-Speed Dynamic Download Acceleration and Floating Video Grabber for Downloader Pro Free",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzWsuAcj/YLc8pb0H0U0RQRkZ1T3C2S2BLGYEWxI5WruP6T1Wt3SPisjdbhRvEA6YifRIK3HboQ4Jx/NT//9yEy5U0Pp3SYsT8ms+M6Y4bCCm32Z14J1pPil5C9aPF/JO0l870tPnssqF10A8iJf6D56UJpZw+tNDtUpyX+dQ8J6iVKN48S7A51zSmIDbqpROYIDLpsVkRbWgvBXebcZMOnU8aQR4y55Qy9oEABBby/rDRN/Jiy1EFAdvkeW8hm/ArAMz10hZJzZDzZxYYOMtyBlgBgMs7qETGK/Njii9NiwpiwrZC8dDwx2yjE7MgDnEVLElCF27IFa6e4APZgWfywIDAQAB",
   "icons": {
@@ -28,7 +28,8 @@
       "css": [
         "styles.css"
       ],
-      "run_at": "document_end"
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   "permissions": [

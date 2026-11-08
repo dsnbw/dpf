@@ -62,7 +62,24 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// 1. Intercept standard browser downloads
+// 1. Intercept standard browser downloads (IDM Parity)
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  if (!isEnabled) return;
+
+  chrome.downloads.cancel(item.id, () => {
+    chrome.downloads.erase({ id: item.id }, () => {});
+  });
+
+  sendDownloadToNativeHost({
+    action: 'DOWNLOAD_URL',
+    url: item.finalUrl || item.url,
+    filename: item.filename,
+    referer: item.referrer || '',
+    mime: item.mime || '',
+    totalBytes: item.fileSize || 0
+  });
+});
+
 chrome.downloads.onCreated.addListener((item) => {
   if (!isEnabled) return;
 
@@ -72,7 +89,7 @@ chrome.downloads.onCreated.addListener((item) => {
 
   sendDownloadToNativeHost({
     action: 'DOWNLOAD_URL',
-    url: item.url,
+    url: item.finalUrl || item.url,
     filename: item.filename,
     referer: item.referrer || '',
     mime: item.mime || '',
@@ -80,7 +97,7 @@ chrome.downloads.onCreated.addListener((item) => {
   });
 });
 
-// 2. Network Sniffer for Video / Audio Streams
+// 2. Network Sniffer for Video / Audio Streams & Attachments
 const MEDIA_PATTERNS = [
   /\.(mp4|m4v|mkv|webm|flv|avi|mov|mp3|m4a|aac|wav|ogg)($|\?)/i,
   /\.(m3u8|mpd)($|\?)/i,
@@ -93,11 +110,13 @@ const MEDIA_PATTERNS = [
 function parseMediaDetails(url, headers = []) {
   let contentType = '';
   let contentLength = 0;
+  let contentDisposition = '';
 
   for (const h of headers) {
     const name = (h.name || '').toLowerCase();
     if (name === 'content-type') contentType = (h.value || '').toLowerCase();
     if (name === 'content-length') contentLength = parseInt(h.value || '0', 10);
+    if (name === 'content-disposition') contentDisposition = h.value || '';
   }
 
   let label = '';
@@ -134,17 +153,34 @@ function parseMediaDetails(url, headers = []) {
     }
   }
 
-  return { contentType, contentLength, label, ext, isAudio };
+  return { contentType, contentLength, contentDisposition, label, ext, isAudio };
 }
 
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (!isEnabled || details.tabId < 0) return;
 
-    const { contentType, contentLength, label, ext, isAudio } = parseMediaDetails(
+    const { contentType, contentLength, contentDisposition, label, ext, isAudio } = parseMediaDetails(
       details.url,
       details.responseHeaders || []
     );
+
+    // If response is an attachment (file download) on navigation, intercept
+    if (contentDisposition.toLowerCase().includes('attachment')) {
+      let filename = '';
+      const fnMatch = contentDisposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+      if (fnMatch && fnMatch[1]) {
+        filename = decodeURIComponent(fnMatch[1].trim());
+      }
+      sendDownloadToNativeHost({
+        action: 'DOWNLOAD_URL',
+        url: details.url,
+        filename: filename,
+        mime: contentType,
+        totalBytes: contentLength
+      });
+      return;
+    }
 
     const isMediaMime = contentType.startsWith('video/') ||
                          contentType.startsWith('audio/') ||
@@ -154,7 +190,6 @@ chrome.webRequest.onHeadersReceived.addListener(
     const matchesPattern = MEDIA_PATTERNS.some(p => p.test(details.url));
 
     if (isMediaMime || matchesPattern) {
-      // Skip tiny video ads / segments < 100KB unless m3u8
       if (contentLength > 0 && contentLength < 102400 && !contentType.includes('mpegurl') && !details.url.includes('videoplayback')) {
         return;
       }
@@ -174,10 +209,8 @@ chrome.webRequest.onHeadersReceived.addListener(
       }
 
       const tabList = detectedMediaByTab.get(details.tabId);
-      // Clean up old entries if too many
       if (tabList.length > 50) tabList.shift();
 
-      // Deduplicate by clean URL or itag
       const isDuplicate = tabList.some(m => {
         if (m.url === details.url) return true;
         if (m.label === label && label && label.includes('p ') && (Date.now() - m.timestamp < 10000)) return true;

@@ -1,6 +1,6 @@
 {
   "name": "@dpf/app",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Downloader Pro Free (DPF) - Desktop Application",
   "main": "src/main/index.js",
   "scripts": {
