@@ -1,0 +1,21 @@
+{
+  "name": "@dpf/app",
+  "version": "1.0.0",
+  "description": "Downloader Pro Free (DPF) - Desktop Application",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@dpf/core": "*",
+    "@dpf/manager": "*",
+    "@dpf/native-host": "*"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "author": "dsnbw",
+  "license": "MIT"
+}
